@@ -44,7 +44,15 @@ jobs:
           aws ecr start-image-scan --repository-name $ECR_REPOSITORY --image-id imageTag=$IMAGE_TAG --region $AWS_REGION
 
       - name: Wait for ECR scan to complete
-        run: echo "Hello, world!"
+        run: |
+          for i in $(seq 1 10); do
+            STATUS=$(aws ecr describe-image-scan-findings --repository-name $ECR_REPOSITORY --image-id imageTag=$IMAGE_TAG --region $AWS_REGION --query 'imageScanStatus.status' --output text)
+            if [ "$STATUS" = "COMPLETE" ]; then
+              break
+            fi
+            echo "Waiting for scan to complete... ($i/10)"
+            sleep 10
+          done
 
       - name: Check ECR scan findings
         run: |
