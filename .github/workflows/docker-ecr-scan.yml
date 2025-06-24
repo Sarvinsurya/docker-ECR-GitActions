@@ -5,8 +5,8 @@ on:
     branches: [main]
 
 permissions:
-  id-token: write # This is required for requesting the JWT
-
+  id-token: write   # Required for OIDC token
+  contents: read    # Required by actions/checkout
 
 jobs:
   build-and-push:
@@ -16,37 +16,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Step 1: Set up AWS with limited GitHub secret just for Secrets Manager
-      - name: Configure AWS to access Secrets Manager
+      # ✅ Authenticate via OIDC using the IAM Role
+      - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::334645279807:role/github.to.aws.oicd
-          aws-region: us-east-1
-
-      # Step 2: Retrieve real AWS credentials from AWS Secrets Manager
-      - name: Retrieve AWS credentials from Secrets Manager
-        id: fetch-secrets
-        run: |
-          SECRET_JSON=$(aws secretsmanager get-secret-value \
-            --secret-id github/aws-credentials \
-            --query SecretString \
-            --output text)
-
-          export AWS_ACCESS_KEY_ID=$(echo $SECRET_JSON | jq -r '.AWS_ACCESS_KEY_ID')
-          export AWS_SECRET_ACCESS_KEY=$(echo $SECRET_JSON | jq -r '.AWS_SECRET_ACCESS_KEY')
-
-          echo "::add-mask::$AWS_ACCESS_KEY_ID"
-          echo "::add-mask::$AWS_SECRET_ACCESS_KEY"
-
-          echo "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" >> $GITHUB_ENV
-          echo "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" >> $GITHUB_ENV
-
-      # Step 3: Reconfigure AWS with actual credentials for ECR, scan, etc.
-      - name: Configure real AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
       - name: Login to Amazon ECR
@@ -74,36 +48,41 @@ jobs:
       - name: Wait for ECR scan to complete
         run: |
           IMAGE_TAG=${{ github.sha }}
-          echo "[DEBUG] Starting minimal loop test for image tag: $IMAGE_TAG"
           for i in {1..12}; do
-            echo "[DEBUG] Loop attempt $i"
-            sleep 1
+            echo "[DEBUG] Waiting for scan to complete... ($i/12)"
+            STATUS=$(aws ecr describe-image-scan-findings \
+              --repository-name ${{ secrets.ECR_REPOSITORY }} \
+              --image-id imageTag=$IMAGE_TAG \
+              --query 'imageScanStatus.status' \
+              --output text 2>/dev/null || echo "IN_PROGRESS")
+            if [ "$STATUS" == "COMPLETE" ]; then
+              echo "[DEBUG] Scan complete."
+              break
+            fi
+            sleep 5
           done
-          echo "[DEBUG] Minimal loop test completed."
 
       - name: Check ECR scan findings
         run: |
           IMAGE_TAG=${{ github.sha }}
           echo "[DEBUG] Checking scan findings for image tag: $IMAGE_TAG"
-          RAW_OUTPUT=$(aws ecr describe-image-scan-findings \
-            --repository-name ${{ secrets.ECR_REPOSITORY }} \
-            --image-id imageTag=$IMAGE_TAG \
-            --output json 2>&1) || true
-          echo "[DEBUG] Raw AWS CLI output:"
-          echo "$RAW_OUTPUT"
+
           HIGH_COUNT=$(aws ecr describe-image-scan-findings \
             --repository-name ${{ secrets.ECR_REPOSITORY }} \
             --image-id imageTag=$IMAGE_TAG \
             --query 'length(imageScanFindings.findings[?severity==`HIGH`])' \
             --output text 2>/dev/null || echo 0)
+
           CRITICAL_COUNT=$(aws ecr describe-image-scan-findings \
             --repository-name ${{ secrets.ECR_REPOSITORY }} \
             --image-id imageTag=$IMAGE_TAG \
             --query 'length(imageScanFindings.findings[?severity==`CRITICAL`])' \
             --output text 2>/dev/null || echo 0)
+
           echo "[DEBUG] Found: $HIGH_COUNT HIGH and $CRITICAL_COUNT CRITICAL vulnerabilities"
+
           if [ "$HIGH_COUNT" -gt 0 ] || [ "$CRITICAL_COUNT" -gt 0 ]; then
             echo ":x: High or Critical vulnerabilities found!"
             exit 1
           fi
-          echo ":white_tick: No high or critical vulnerabilities found."
+          echo ":white_check_mark: No high or critical vulnerabilities found."
