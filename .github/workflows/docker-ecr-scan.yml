@@ -1,95 +1,72 @@
-name: Build, Scan, and Push Docker Image to ECR
-
+name: Build, Scan, and Deploy Docker Image to ECR
 on:
   push:
-    branches: [ main ]
-  workflow_dispatch:
-
+    branches: [main]
 jobs:
-  build-scan-push:
+  build-and-push:
     runs-on: ubuntu-latest
-    env:
-      AWS_REGION: us-east-1 # Change as needed
-      ECR_REPOSITORY: scan2
-      IMAGE_TAG: ${{ github.sha }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
+          aws-region: ap-south-1
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
-
       - name: Build Docker image
         run: |
-          docker build -t $ECR_REPOSITORY:$IMAGE_TAG .
-
-          - name: Tag and Push image to ECR
-          run: |
-            IMAGE_TAG=${{ github.sha }}
-            docker tag ${{ secrets.ECR_REPOSITORY }}:$IMAGE_TAG ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:$IMAGE_TAG
-            docker push ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:$IMAGE_TAG
+          IMAGE_TAG=${{ github.sha }}
+          docker build -t ${{ secrets.ECR_REPOSITORY }}:$IMAGE_TAG .
+      - name: Tag and Push image to ECR
+        run: |
+          IMAGE_TAG=${{ github.sha }}
+          docker tag ${{ secrets.ECR_REPOSITORY }}:$IMAGE_TAG ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:$IMAGE_TAG
+          docker push ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:$IMAGE_TAG
       - name: Start ECR image scan
         run: |
-            IMAGE_TAG=${{ github.sha }}
-            aws ecr start-image-scan \
-              --repository-name ${{ secrets.ECR_REPOSITORY }} \
-              --image-id imageTag=$IMAGE_TAG
+          IMAGE_TAG=${{ github.sha }}
+          aws ecr start-image-scan \
+            --repository-name ${{ secrets.ECR_REPOSITORY }} \
+            --image-id imageTag=$IMAGE_TAG
       - name: Wait for ECR scan to complete
         run: |
-            IMAGE_TAG=${{ github.sha }}
-            echo "[DEBUG] Starting minimal loop test for image tag: $IMAGE_TAG"
-            for i in {1..12}; do
-              echo "[DEBUG] Loop attempt $i"
-              sleep 1
-            done
-            echo "[DEBUG] Minimal loop test completed."
+          IMAGE_TAG=${{ github.sha }}
+          echo "[DEBUG] Starting minimal loop test for image tag: $IMAGE_TAG"
+          for i in {1..12}; do
+            echo "[DEBUG] Loop attempt $i"
+            sleep 1
+          done
+          echo "[DEBUG] Minimal loop test completed."
       - name: Check ECR scan findings
         run: |
-            IMAGE_TAG=${{ github.sha }}
-            echo "[DEBUG] Checking scan findings for image tag: $IMAGE_TAG"
-            RAW_OUTPUT=$(aws ecr describe-image-scan-findings \
-              --repository-name ${{ secrets.ECR_REPOSITORY }} \
-              --image-id imageTag=$IMAGE_TAG \
-              --output json 2>&1) || true
-            echo "[DEBUG] Raw AWS CLI output:"
-            echo "$RAW_OUTPUT"
-            HIGH_COUNT=$(aws ecr describe-image-scan-findings \
-              --repository-name ${{ secrets.ECR_REPOSITORY }} \
-              --image-id imageTag=$IMAGE_TAG \
-              --query 'length(imageScanFindings.findings[?severity==`HIGH`])' \
-              --output text 2>/dev/null || echo 0)
-            CRITICAL_COUNT=$(aws ecr describe-image-scan-findings \
-              --repository-name ${{ secrets.ECR_REPOSITORY }} \
-              --image-id imageTag=$IMAGE_TAG \
-              --query 'length(imageScanFindings.findings[?severity==`CRITICAL`])' \
-              --output text 2>/dev/null || echo 0)
-            echo "[DEBUG] Found: $HIGH_COUNT HIGH and $CRITICAL_COUNT CRITICAL vulnerabilities"
-            if [ "$HIGH_COUNT" -gt 0 ] || [ "$CRITICAL_COUNT" -gt 0 ]; then
-              echo ":x: High or Critical vulnerabilities found!"
-              exit 1
-            fi
-            echo ":white_tick: No high or critical vulnerabilities found."
-        # Add your deployment step here if needed, e.g.:
-        # - name: Deploy to ECS
-        #   run: ... (your deployment script)
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
+          IMAGE_TAG=${{ github.sha }}
+          echo "[DEBUG] Checking scan findings for image tag: $IMAGE_TAG"
+          RAW_OUTPUT=$(aws ecr describe-image-scan-findings \
+            --repository-name ${{ secrets.ECR_REPOSITORY }} \
+            --image-id imageTag=$IMAGE_TAG \
+            --output json 2>&1) || true
+          echo "[DEBUG] Raw AWS CLI output:"
+          echo "$RAW_OUTPUT"
+          HIGH_COUNT=$(aws ecr describe-image-scan-findings \
+            --repository-name ${{ secrets.ECR_REPOSITORY }} \
+            --image-id imageTag=$IMAGE_TAG \
+            --query 'length(imageScanFindings.findings[?severity==`HIGH`])' \
+            --output text 2>/dev/null || echo 0)
+          CRITICAL_COUNT=$(aws ecr describe-image-scan-findings \
+            --repository-name ${{ secrets.ECR_REPOSITORY }} \
+            --image-id imageTag=$IMAGE_TAG \
+            --query 'length(imageScanFindings.findings[?severity==`CRITICAL`])' \
+            --output text 2>/dev/null || echo 0)
+          echo "[DEBUG] Found: $HIGH_COUNT HIGH and $CRITICAL_COUNT CRITICAL vulnerabilities"
+          if [ "$HIGH_COUNT" -gt 0 ] || [ "$CRITICAL_COUNT" -gt 0 ]; then
+            echo ":x: High or Critical vulnerabilities found!"
+            exit 1
+          fi
+          echo ":white_tick: No high or critical vulnerabilities found."
+      # Add your deployment step here if needed, e.g.:
+      # - name: Deploy to ECS
+      #   run: ... (your deployment script)
