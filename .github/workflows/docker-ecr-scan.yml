@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       AWS_REGION: us-east-1 # Change as needed
-      ECR_REPOSITORY: <your-ecr-repo-name> # Change as needed
+      ECR_REPOSITORY: scan2
       IMAGE_TAG: ${{ github.sha }}
     steps:
       - name: Checkout code
