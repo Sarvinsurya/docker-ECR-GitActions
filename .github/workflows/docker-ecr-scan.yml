@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
 
+permissions:
+  id-token: write # This is required for requesting the JWT
+
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
@@ -16,8 +20,7 @@ jobs:
       - name: Configure AWS to access Secrets Manager
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.SECRETS_MANAGER_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.SECRETS_MANAGER_SECRET_KEY }}
+          role-to-assume: arn:aws:iam::334645279807:role/github.to.aws.oicd
           aws-region: us-east-1
 
       # Step 2: Retrieve real AWS credentials from AWS Secrets Manager
