@@ -16,7 +16,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # ✅ Authenticate via OIDC using the IAM Role
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -37,6 +36,17 @@ jobs:
           IMAGE_TAG=${{ github.sha }}
           docker tag ${{ secrets.ECR_REPOSITORY }}:$IMAGE_TAG ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:$IMAGE_TAG
           docker push ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:$IMAGE_TAG
+
+      - name: Update image tag in deployment.yaml
+        run: |
+          IMAGE_TAG=${{ github.sha }}
+          REGISTRY=${{ steps.login-ecr.outputs.registry }}
+          yq e '.spec.template.spec.containers[0].image = "'${REGISTRY}/${{ secrets.ECR_REPOSITORY }}:${IMAGE_TAG}'"' -i k8s/deployment.yaml
+          git config --global user.email "ci-bot@example.com"
+          git config --global user.name "ci-bot"
+          git add k8s/deployment.yaml
+          git commit -m "Update image tag to ${IMAGE_TAG} [ci skip]"
+          git push origin main
 
       - name: Start ECR image scan
         run: |
