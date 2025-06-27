@@ -6,7 +6,7 @@ on:
 
 permissions:
   id-token: write   # Required for OIDC token
-  contents: read    # Required by actions/checkout
+  contents: write    # Required by actions/checkout
 
 jobs:
   build-and-push:
