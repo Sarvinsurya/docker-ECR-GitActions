@@ -14,6 +14,6 @@ spec:
     spec:
       containers:
         - name: flask-app
-          image: <your-account-id>.dkr.ecr.<region>.amazonaws.com/scan2:<your-image-tag>
+          image: 334645279807.dkr.ecr.us-east-1.amazonaws.com/scan2:29e9f71cf397c06dd244583dd6031a8a9ddf224a
           ports:
             - containerPort: 5000
