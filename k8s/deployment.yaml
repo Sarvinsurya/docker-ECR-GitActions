@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: flask-app
-          image: 334645279807.dkr.ecr.us-east-1.amazonaws.com/docker-ecr-app:latest
+          image: 334645279807.dkr.ecr.us-east-1.amazonaws.com/scan2:199cba0bb353b764d4b663449076079f81620dc9
           ports:
             - containerPort: 5000
           resources:
