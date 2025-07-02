@@ -3,7 +3,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def hello():
-    return 'Hello from docker+ecr'
+    return 'Hello from docker+ecr and this sis the sample'
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0') 
